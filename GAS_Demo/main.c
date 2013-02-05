@@ -61,14 +61,13 @@
 #endif
 
 /* GAs parameters */
-#define POPULATION_SIZE     10            // chromosomes
+#define POPULATION_SIZE     500           // chromosomes
 #define MAX_GENERATIONS     10000         // number of generations to evolve
-#define XOVER_PROB          0.7           // crossover probability
-#define MUTATION_PROB       0.25          // mutation probability
+#define XOVER_PROB          0.75           // crossover probability
+#define MUTATION_PROB       0.32         // mutation probability
 #define C_AIR               (double)300000000        // m/s
-#define LAMBDA(f)           (double)C_AIR/f           // wavelength for a given frequency
+#define LAMBDA(f)           (double)(C_AIR/f)           // wavelength for a given frequency
 #define TO_DEGREES(x)        (double)(x*(180/M_PI))
-#define RAND_BOUNDED        0.123
 #define MAX_FITNESS         (double)9999.9999
 #define BITS_PER_GENE       15
 
@@ -85,8 +84,6 @@ int nr_points = 0;
 double target_gain = 0.0f;
 /* frequency value */
 int frequency = 0;  //Mhz
-/* number of data points */
-int data_pts = 0;
 
 /* log data */
 FILE *fp;
@@ -97,43 +94,6 @@ struct point{
     double py;
     double pz;
 };
-
-/* compute the azimuth and elevation angles of a segment from the coordinates */
-double * compute_angles(struct point *start, struct point *end){
-    double *angles = (double*)calloc(2, sizeof(double));
-    double r = sqrt(pow(end->px - start->px, 2) + pow(end->py - start->py, 2) + pow(end->pz - start->pz, 2));
-    double theta = acos(fabs(end->pz - start->pz)/r);
-    if((int)(theta)>=1){
-        theta = RAND_BOUNDED;
-    }
-    double phi = atan(fabs(end->py - start->py)/fabs(end->px - start->px));
-    if((int)(phi)==0){
-        phi = RAND_BOUNDED;
-    }
-    angles[0] = theta;
-    angles[1] = phi;
-    return angles;
-}
-
-/* compute the gain of an antenna given by the 2 angles for an elliptic antenna */
-double compute_gain(double theta, double phi){
-    double ret = 0.0f;
-    ret = (double)(16.0/(sin(phi)*sin(theta)));
-    ret = 10*log10(ret); // convert to dB
-    return ret;
-}
-
-/* the fitness function to be minimised - minimum defines the gain closest to the desired one */
-double f(double phi, double theta){
-    double ret = 0.0f;
-    ret = compute_gain(phi, theta) - target_gain;
-    return ret;
-}
-
-/////////////////////////////END OF PROBLEM SPECIFIC CODE /////////////////////////////
-
-
-//////////////////////////////////// GAS SPECIFIC CODE ///////////////////////////////////////////
 
 /* chromosome abstraction */
 struct chromosome{
@@ -160,6 +120,47 @@ struct population{
     /* index of the fittest chromosome */
     int best_chromosome_idx;
 };
+
+
+/* compute the azimuth and elevation angles of a segment from the coordinates */
+double * compute_angles(struct point *start, struct point *end){
+    double *angles = (double*)calloc(2, sizeof(double));
+    double r = sqrt(pow(end->px - start->px, 2) + pow(end->py - start->py, 2) + pow(end->pz - start->pz, 2));
+    double theta = acos(fabs(end->pz - start->pz)/r);
+    double phi = atan(fabs(end->py - start->py)/fabs(end->px - start->px));
+    angles[0] = theta;
+    angles[1] = phi;
+    return angles;
+}
+
+/* compute the gain of an antenna given by the 2 angles for an elliptic antenna */
+double compute_gain(double theta, double phi){
+    double ret = 0.0f;
+    ret = (double)(16.0/(sin(phi)*sin(theta)));
+    ret = 10*log10(ret); // convert to dB
+    return ret;
+}
+
+/* the fitness function to be minimised - minimum defines the gain closest to the desired one */
+double f(struct chromosome* c){
+    double ret = 0.0f;
+    double global_gain = 0.0f;
+    double *ang =  (double*) calloc(2, sizeof(double));
+    /* compute the global gain of the antenna */
+    for(int i=0;i<nr_points-1;++i){
+        ang = compute_angles(&(c->pts[i]), &(c->pts[i+1]));
+        global_gain += compute_gain(ang[0], ang[1]);
+        global_gain /= (nr_points - 1);
+    }
+    ret = fabs(global_gain - target_gain);
+    if(ang) free(ang);
+    return ret;
+}
+
+/////////////////////////////END OF PROBLEM SPECIFIC CODE /////////////////////////////
+
+
+//////////////////////////////////// GAS SPECIFIC CODE ///////////////////////////////////////////
 
 double randomize(double l, double h)
 {
@@ -210,12 +211,9 @@ void init_population(struct population *p, int psize){
 void evaluate_population(struct population *p)
 {
     for(int i=0; i<p->size; i++){
-        for(int j=1;j<nr_points;++j){
-            double* angles = compute_angles(&(p->c[i].pts[j-1]), &(p->c[i].pts[j]));
-            p->c[i].fitness = f(angles[0], angles[1]);
+            p->c[i].fitness = f(&p->c[i]);
             if(isnan(p->c[i].fitness)!=0 || isinf(p->c[i].fitness)!=0)
                 p->c[i].fitness = MAX_FITNESS;
-        }
     }
 }
 
@@ -295,6 +293,8 @@ void apply_elitism(struct population *p)
         }
         p->c[worst_idx].fitness = p->c[POPULATION_SIZE].fitness;
     }
+    if(best) free(best);
+    if(worst) free(worst);
 }
 
 /* selection function using the elitist model in which only the
