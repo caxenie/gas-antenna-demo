@@ -6,8 +6,9 @@
 
     Problem statement:
     Using GAs design a 3D wire antenna which will have a target gain of T (dB) at a certain frequency, f
-    given a fixed number of segments.
-    The output of the application should be a vector of coordinates for the segment edges and the error from the desired target gain.
+    given a fixed number of points or segments.
+    The output of the application should be a vector of (x, y, z) coordinates for each point and the error
+    from the desired target gain.
 
     Input to the application:
       - the maximum length of the antenna in points (segments = points-1)
@@ -15,7 +16,7 @@
       - target gain
 
     Output:
-      - coordinates of the antenna segments
+      - coordinates of the antenna points
       - error between output gain and desired gain
 
     Hints:
@@ -60,8 +61,8 @@
 #endif
 
 /* GAs parameters */
-#define POPULATION_SIZE     50            // chromosomes
-#define MAX_GENERATIONS     1000         // number of generations to evolve
+#define POPULATION_SIZE     10            // chromosomes
+#define MAX_GENERATIONS     10000         // number of generations to evolve
 #define XOVER_PROB          0.7           // crossover probability
 #define MUTATION_PROB       0.25          // mutation probability
 #define C_AIR               (double)300000000        // m/s
@@ -69,6 +70,7 @@
 #define TO_DEGREES(x)        (double)(x*(180/M_PI))
 #define RAND_BOUNDED        0.123
 #define MAX_FITNESS         (double)9999.9999
+#define BITS_PER_GENE       15
 
 /////////////////////////////// PROBLEM SPECIFIC CODE //////////////////////////////////
 
@@ -418,8 +420,8 @@ int main(int argc, char* argv[]){
     /* get data from the input file */
     get_input_data();
     Lmax = 0.5 * LAMBDA(frequency);                           // in m - max length of the segment
-    representation_size= 120;                                 // bits / chromosome
-    gene_size= representation_size/nr_points;                 // bits / gene (3 coordinates: x, y, z)
+    representation_size= nr_points*BITS_PER_GENE;             // bits / chromosome
+    gene_size= BITS_PER_GENE;                                 // bits / gene (3 coordinates: x, y, z)
 
     /* initialize the GA and start the evolution */
     init_population(p, POPULATION_SIZE);
@@ -427,7 +429,7 @@ int main(int argc, char* argv[]){
     evaluate_population(p);
     select_best(p);
     report_state(p);
-    while(p->gen < MAX_GENERATIONS ){
+    while(p->gen < MAX_GENERATIONS){
         p->gen++;
         apply_selection(p, newp);
         apply_crossover(p);
@@ -437,7 +439,7 @@ int main(int argc, char* argv[]){
         apply_elitism(p);
     }
     printf("\nEvolution is completed...\n\n");
-    printf("Max segment length is %lf\n", Lmax);
+    printf("Max segment length is %lf m\n", Lmax);
     printf("\nBest fitness: %lf\n\n", p->c[POPULATION_SIZE].fitness);
     printf("\n Best chromosome: \n");
     for(int i=0;i<nr_points;++i){
